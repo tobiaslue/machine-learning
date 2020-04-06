@@ -3,15 +3,11 @@ import pandas as pd
 from sklearn import linear_model
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 trainset = pd.read_csv('train.csv')
 y = trainset['y'].values
 X = trainset[['x1', 'x2', 'x3', 'x4', 'x5']].values
-
-# trainset.plot(y='y')
-# plt.show()
-# seems to be constant with a lot of noise
 
 def fun(x):
     xx = np.append(x, [x**2, np.exp(x), np.cos(x)])
@@ -27,7 +23,7 @@ X_train, X_test, y_train, y_test = train_test_split(X_preprocessed, y, test_size
 model = linear_model.LassoCV(fit_intercept=False, max_iter=100000)
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
-print(np.sqrt(mean_squared_error(y_test, y_pred)))
+print((mean_squared_error(y_test, y_pred))**0.5)
 print(model.coef_)
 
 # df = pd.DataFrame({'y_pred': y_pred, 'y_test': y_test})
