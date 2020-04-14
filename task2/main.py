@@ -1,14 +1,20 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression, LassoCV
+from sklearn.svm import SVC
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 import sklearn.metrics as metrics
+from deep import Classifier
+import torch
 
 VITALS = ['LABEL_RRate', 'LABEL_ABPm', 'LABEL_SpO2', 'LABEL_Heartrate']
 TESTS = ['LABEL_BaseExcess', 'LABEL_Fibrinogen', 'LABEL_AST', 'LABEL_Alkalinephos', 'LABEL_Bilirubin_total',
          'LABEL_Lactate', 'LABEL_TroponinI', 'LABEL_SaO2',
          'LABEL_Bilirubin_direct', 'LABEL_EtCO2']
+
 
 # data
 train_features = pd.read_csv('train_features.csv')
@@ -42,13 +48,15 @@ def get_score(df_true, df_submission):
     print("Task1: ", task1, "\nTask2: ", task2, "\nTask3: ", task3)
     return score
 
-def feature_engineer(data):
+def preprocess(X_train, X_test):
     """preprocesses the data
 
     Parameters
     ----------
-    data (Dataframe): 
-        A dataframe containing the dataset to be preprocessed
+    X_train (Dataframe): 
+        A dataframe containing the train dataset to be preprocessed
+    X_test (Dataframe):
+        A dataframe containing the test dataset to be preprocessed
 
     Returns
     -------
@@ -57,31 +65,40 @@ def feature_engineer(data):
 
     TODO implement data imputation and find a way to group data per pacient
     """
-    data = (data.groupby('pid').mean()).fillna(data.median())
-    data = data.drop('Time', axis=1).sort_values(by='pid')
+    X_train = (X_train.groupby('pid').mean()).fillna(X_train.median())
+    X_train = X_train.drop('Time', axis=1).sort_values(by='pid')
+
+    X_test = (X_test.groupby('pid').mean()).fillna(X_test.median())
+    X_test = X_test.drop('Time', axis=1).sort_values(by='pid')
 
     scaler = StandardScaler()
-    return pd.DataFrame(scaler.fit_transform(data), index=data.index)
+    scaled = scaler.fit_transform(X_train)
+    return pd.DataFrame(scaled, index=X_train.index), pd.DataFrame(scaler.transform(X_test), index=X_test.index)
 
 def subtask1(X_train, y_train, X_test):
-    y_pred = []
+    # y_pred = []
 
-    for test in TESTS:
-        y = y_train[test]
+    # for test in TESTS:
+    #     y = y_train[test]
 
-        model = LogisticRegression(random_state=42).fit(X_train, y)
-        y_pred.append(model.predict_proba(X_test)[:,1])
-
-    return pd.DataFrame(np.transpose(y_pred), columns=TESTS, index=X_test.index)
+    #     model = RandomForestClassifier(random_state=42, class_weight='balanced').fit(X_train, y)
+    #     y_pred.append(model.predict_proba(X_test)[:,1])
+    X = torch.Tensor(X_train.values)
+    y = torch.Tensor(y_train[TESTS].values)
+    X_pred = torch.Tensor(X_test.values)
+    model = Classifier(35, 10)
+    model.train(X, y)
+    y_pred = model.predict(X_pred)
+    return pd.DataFrame(y_pred.detach().numpy(), columns=TESTS, index=X_test.index)
 
 def subtask2(X_train, y_train, X_test):
-
-    y = y_train[('LABEL_Sepsis')]
-
-    model = LogisticRegression(random_state=42).fit(X_train, y)
-    y_pred = model.predict_proba(X_test)[:,1]
-
-    return pd.DataFrame(np.transpose(y_pred), columns=['LABEL_Sepsis'], index=X_test.index)
+    X = torch.Tensor(X_train.values)
+    y = torch.Tensor([y_train['LABEL_Sepsis'].values]).transpose(0, 1)
+    X_pred = torch.Tensor(X_test.values)
+    model = Classifier(35, 1)
+    model.train(X, y)
+    y_pred = model.predict(X_pred)
+    return pd.DataFrame(y_pred.detach().numpy(), columns=['LABEL_Sepsis'], index=X_test.index)
 
 def subtask3(X_train, y_train, X_test):
     y_pred = []
@@ -125,10 +142,9 @@ def make_submission(X_train, y_train, X_test):
     result.to_csv('prediction.zip', float_format='%.3f', compression='zip')
 
    
-X = feature_engineer(train_features)
-y = train_labels
+X_train, X_test = preprocess(train_features, test_features)
+y_train = train_labels
 
-evaluate_performance(X, y)
+evaluate_performance(X_train, y_train)
 
-X_submission = feature_engineer(test_features)
 #make_submission(X, y, X_submission)
